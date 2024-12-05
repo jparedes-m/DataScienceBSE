@@ -317,7 +317,12 @@ majority <- train_data %>% filter(class == "good")
 minority <- train_data %>% filter(class == "bad")
 
 majority_undersampled <- majority %>% sample_n(nrow(minority))
+#minority_oversampled <- minority[sample(1:nrow(minority), nrow(majority), replace = TRUE), ]
+
 train_data_balanced <- bind_rows(majority_undersampled, minority)
+
+#train_data_balanced <- bind_rows(majority, minority_oversampled)
+
 train_data_balanced <- train_data_balanced %>% sample_frac(1)
 table(train_data_balanced$class)
 
