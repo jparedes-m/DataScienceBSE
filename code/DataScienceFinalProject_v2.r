@@ -310,8 +310,19 @@ test_x <- X[-train_index, ]
 test_y <- y[-train_index]
 rm(train_index)
 
-## [5.1] KNN ----
+# how to adress class imbalance:
 train_data <- cbind(train_x, class = train_y)
+
+majority <- train_data %>% filter(class == "good")
+minority <- train_data %>% filter(class == "bad")
+
+majority_undersampled <- majority %>% sample_n(nrow(minority))
+train_data_balanced <- bind_rows(majority_undersampled, minority)
+train_data_balanced <- train_data_balanced %>% sample_frac(1)
+table(train_data_balanced$class)
+
+## [5.1] KNN ----
+
 control <- trainControl(method = "cv", number = 7, classProbs = TRUE)
 knn_model <- train(class ~ ., data = train_data, method = "knn", tuneGrid = data.frame(k = 1:25), trControl = control, metric = 'ROC')
 
