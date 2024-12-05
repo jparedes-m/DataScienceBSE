@@ -117,6 +117,26 @@ for (page in 1:pages) {
   print(grid_plot)
 }
 
+# Calculate the proportion of each class
+class_proportions <- table(data$class) / nrow(data)
+
+# Set up a single plot
+par(mfrow = c(1, 1))  # Single plot layout
+
+# Create the bar plot
+barplot(class_proportions,
+        names.arg = c("Bad", "Good"),  # Class names
+        main = "Class Imbalance in the Sample",  # Title
+        col = c("salmon", "mediumaquamarine"),  # Bar colors
+        ylab = "Proportion",  # Y-axis label
+        xlab = "Class")  # X-axis label
+
+# Add a border box around the plot
+box()
+
+# Add a grid for better visualization
+grid()
+
 ## [3.4] Correlation matrix ----
 map <- pheatmap(cor(df, use = "complete.obs"), 
          display_numbers = TRUE, 
