@@ -176,10 +176,9 @@ train_data_balanced <- bind_rows(majority_undersampled, minority)
 train_data_balanced <- train_data_balanced %>% sample_frac(1)
 table(train_data_balanced$class)
 
-train_x <- X[train_index, ]
-train_y <- y[train_index]
+train_x <- train_data_balanced %>% select(-class)
+train_y <- train_data_balanced$class
 
-rm(train_index)
 ## [5.1] KNN ----
 control <- trainControl(method = "cv", number = 7, classProbs = TRUE)
 knn_model <- train(class ~ ., data = train_data_balanced, method = "knn", tuneGrid = data.frame(k = 1:25), trControl = control, metric = 'ROC')
