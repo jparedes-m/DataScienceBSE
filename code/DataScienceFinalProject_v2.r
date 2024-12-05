@@ -15,7 +15,9 @@ library(randomForest)
 library(xgboost)
 library(glmnet)
 library(pROC)
-library(devtools)
+library(performanceEstimation)
+library(gridExtra)
+
 
 # [1] Data ----
 ## Reading, selecting variables, and making numerical some categorical variables.
@@ -51,210 +53,69 @@ sapply(df, \(x) 100*mean(is.na(x)))
 # dummy cols!!! here
 
 # [3] Exploratory data analysis ----
-## [3.1] Univariate analysis ----
-data_long <- data %>% select(sex, age, credit_amount, duration) %>%
-  pivot_longer(cols = c(age, credit_amount, duration), names_to = "variable", values_to = "value") %>% 
-  mutate(variable = case_when(
-    variable == "age" ~ "Age (in years)",
-    variable == "credit_amount" ~ "Credit Amount (in DM)",
-    variable == "duration" ~ "Duration (in months)"))
 
-ggplot(data_long, aes(x = value, fill = sex)) +
-  geom_histogram(aes(y = after_stat(density)), position = "identity", bins = 30, alpha = 0.5) +
-  geom_density(aes(color = sex), linewidth = 1, fill = NA) +
-  labs(y = "Density", x = " ", title = "Distribution by Sex", fill = "Sex:", color = "Sex:") +
-  theme_light() +
-  scale_x_continuous(n.breaks = 17) +
-  scale_y_continuous(n.breaks = 10) +
-  facet_wrap(~ variable, scales = "free") +
-  scale_fill_manual(values = c("male" = "cornflowerblue", "female" = "firebrick")) +
-  scale_color_manual(values = c("male" = "cornflowerblue", "female" = "firebrick")) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-        axis.title.y = element_text(size = 12),
-        axis.title.x = element_text(size = 12), 
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-        strip.text.x = element_text(face = "bold", color = "black", size = 12),
-        legend.position = "bottom")
+## [3.1] Summary statistics [CATA] ----
+# Ensure 'class' is a factor
+data$class <- as.factor(data$class)
 
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_1_graph.png", width = 9, height = 10, bg = "white")
+# Updated list of categorical variables
+cat_vars <- c("sex", "p_status", "job", "housing", "savings_account", 
+              "checking_account", "purpose", "credit_history", 
+              "property_magnitude", "foreign_worker")
 
-## [3.2] Credit amount ----
-data %>% mutate(p_status = ifelse(p_status == "single"| p_status == "div/sep", "Single", "Married")) %>% 
-ggplot(aes(x = credit_amount)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "dodgerblue3", alpha = 0.7) +
-    geom_density(color = "blue", linewidth = 1) +
-    labs(y = "Density", x = "Credit Amount in DM", title = "Credit Amount Distribution by Status") +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-          strip.text.x = element_text(face = "bold", color = "black", size = 12),
-          axis.title.y = element_text(size = 12),
-          axis.title.x = element_text(size = 12),
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~ p_status, scales = "free", nrow = 2)
+# Melt the dataset for easier plotting
+melted_data <- data %>%
+  select(class, all_of(cat_vars)) %>%
+  pivot_longer(cols = all_of(cat_vars), names_to = "Variable", values_to = "Category") %>%
+  group_by(Variable, Category, class) %>%
+  summarise(Frequency = n(), .groups = "drop")
 
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_2_1_graph.png", width = 9, height = 10, bg = "white")
+# Create a list to store the plots
+plot_list <- list()
 
-data %>%
-  mutate(p_status = ifelse(p_status == "single" | p_status == "div/sep", "Single", "Married")) %>%
-  ggplot(aes(x = credit_amount, fill = p_status)) +
-  geom_histogram(aes(y = after_stat(density)), bins = 30, alpha = 0.7, position = "identity") +
-  geom_density(aes(color = p_status), linewidth = 1, fill = NA) +
-  labs(
-    y = "Density",
-    x = "Credit Amount in DM",
-    title = "Credit Amount Distribution by Marital Status",
-    fill = "Marital Status:",
-    color = "Marital Status:"
-  ) +
-  theme_light() +
-  scale_x_continuous(n.breaks = 20) +
-  scale_y_continuous(n.breaks = 10) +
-  scale_fill_manual(values = c("Single" = "cornflowerblue", "Married" = "firebrick")) +
-  scale_color_manual(values = c("Single" = "cornflowerblue", "Married" = "firebrick")) +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-    axis.title.y = element_text(size = 12),
-    axis.title.x = element_text(size = 12),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    strip.text.x = element_text(face = "bold", color = "black", size = 12),
-    legend.position = "bottom"
-  )
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_2_2_graph.png", width = 9, height = 10, bg = "white")
-
-ggplot(data, aes(x = credit_amount)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "dodgerblue3", alpha = 0.7) +
-    geom_density(color = "blue", linewidth = 1) +
-    labs(y = "Density", x = "Credit Amount in DM", title = "Credit Amount Distribution by product") +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-          strip.text.x = element_text(face = "bold", color = "black", size = 12),
-          axis.title.y = element_text(size = 12),
-          axis.title.x = element_text(size = 12),
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~ purpose, scales = "free", nrow = 2)
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_2_3_graph.png", width = 15, height = 10, bg = "white")
-
-data %>% mutate(class = ifelse(class == 0, "Good", "Bad")) %>%
-ggplot(aes(x = credit_amount, fill = sex)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, alpha = 0.7, position = "identity") +
-    geom_density(aes(color = sex), linewidth = 1, fill = NA) +
-    labs(
-        y = "Density",
-        x = "Credit Amount in DM",
-        title = "Credit Amount Distribution by Class and Sex",
-        fill = "Sex",
-        color = "Sex"
-    ) +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
+# Generate a barplot for each variable
+for (var in unique(melted_data$Variable)) {
+  plot_data <- melted_data %>% filter(Variable == var)
+  
+  p <- ggplot(plot_data, aes(x = Category, y = Frequency, fill = class)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(title = paste("Frequency of", var, "by Class"),
+         x = var, y = "Frequency") +
+    scale_fill_manual(values = c("salmon", "mediumaquamarine"), 
+                      labels = c("Bad", "Good")) +
+    theme_minimal() +
     theme(
-        plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-        strip.text.x = element_text(face = "bold", color = "black", size = 12),
-        axis.title.y = element_text(size = 12),
-        axis.title.x = element_text(size = 12),
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-        legend.position = "bottom") +
-    facet_wrap(~ class, scales = "free", nrow = 2) +
-    scale_fill_manual(values = c("male" = "cornflowerblue", "female" = "firebrick")) +
-    scale_color_manual(values = c("male" = "cornflowerblue", "female" = "firebrick"))
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title.x = element_text(size = 12, face = "bold"),
+      axis.title.y = element_text(size = 12, face = "bold"),
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      legend.position = "top",
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 10)
+    )
+  
+  # Add the plot to the list
+  plot_list[[var]] <- p
+}
 
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_2_4_graph.png", width = 9, height = 10, bg = "white")
+# Arrange plots into a grid layout (4 per page)
+num_plots <- length(plot_list)
+plots_per_page <- 4
+pages <- ceiling(num_plots / plots_per_page)
 
-## [3.3] Duration ----
-data %>% mutate(p_status = ifelse(p_status == "single"| p_status == "div/sep", "Single", "Married")) %>% 
-ggplot(aes(x = duration)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "dodgerblue3", alpha = 0.7) +
-    geom_density(color = "blue", linewidth = 1) +
-    labs(y = "Density", x = "Duration (in months)", title = "Credit Duration Distribution by Status") +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-          strip.text.x = element_text(face = "bold", color = "black", size = 12),
-          axis.title.y = element_text(size = 12),
-          axis.title.x = element_text(size = 12),
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~ p_status, scales = "free", nrow = 2)
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_3_1_graph.png", width = 9, height = 10, bg = "white")
-
-data %>%
-  mutate(p_status = ifelse(p_status == "single" | p_status == "div/sep", "Single", "Married")) %>%
-  ggplot(aes(x = duration, fill = p_status)) +
-  geom_histogram(aes(y = after_stat(density)), bins = 30, alpha = 0.7, position = "identity") +
-  geom_density(aes(color = p_status), linewidth = 1, fill = NA) +
-  labs(
-    y = "Density",
-    x = "Duration (in months)",
-    title = "Credit Duration Distribution by Marital Status",
-    fill = "Marital Status:",
-    color = "Marital Status:"
-  ) +
-  theme_light() +
-  scale_x_continuous(n.breaks = 20) +
-  scale_y_continuous(n.breaks = 10) +
-  scale_fill_manual(values = c("Single" = "cornflowerblue", "Married" = "firebrick")) +
-  scale_color_manual(values = c("Single" = "cornflowerblue", "Married" = "firebrick")) +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-    axis.title.y = element_text(size = 12),
-    axis.title.x = element_text(size = 12),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    strip.text.x = element_text(face = "bold", color = "black", size = 12),
-    legend.position = "bottom"
-  )
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_3_2_graph.png", width = 9, height = 10, bg = "white")
-
-ggplot(data, aes(x = duration)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "dodgerblue3", alpha = 0.7) +
-    geom_density(color = "blue", linewidth = 1) +
-    labs(y = "Density", x = "Duration (in months)", title = "Credit Duration Distribution by product") +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-          strip.text.x = element_text(face = "bold", color = "black", size = 12),
-          axis.title.y = element_text(size = 12),
-          axis.title.x = element_text(size = 12),
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~ purpose, scales = "free", nrow = 2)
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_3_3_graph.png", width = 15, height = 10, bg = "white")
-
-data %>% mutate(class = ifelse(class == 0, "Good", "Bad")) %>%
-ggplot(aes(x = duration, fill = sex)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, alpha = 0.7, position = "identity") +
-    geom_density(aes(color = sex), linewidth = 1, fill = NA) +
-    labs(
-        y = "Density",
-        x = "Duration (in months)",
-        title = "Credit Duration Distribution by Class and Sex",
-        fill = "Sex",
-        color = "Sex"
-    ) +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(
-        plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-        strip.text.x = element_text(face = "bold", color = "black", size = 12),
-        axis.title.y = element_text(size = 12),
-        axis.title.x = element_text(size = 12),
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-        legend.position = "bottom") +
-    facet_wrap(~ class, scales = "free", nrow = 2) +
-    scale_fill_manual(values = c("male" = "cornflowerblue", "female" = "firebrick")) +
-    scale_color_manual(values = c("male" = "cornflowerblue", "female" = "firebrick"))
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_3_4_graph.png", width = 9, height = 10, bg = "white")
+for (page in 1:pages) {
+  # Select plots for the current page
+  start_idx <- (page - 1) * plots_per_page + 1
+  end_idx <- min(page * plots_per_page, num_plots)
+  current_plots <- plot_list[start_idx:end_idx]
+  
+  # Arrange the selected plots in a grid
+  grid_plot <- grid.arrange(grobs = current_plots, ncol = 2, top = paste("Page", page))
+  
+  # Print the grid plot
+  print(grid_plot)
+}
 
 ## [3.4] Correlation matrix ----
 map <- pheatmap(cor(df, use = "complete.obs"), 
@@ -310,10 +171,10 @@ rm(train_index)
 # how to adress class imbalance:
 train_data <- cbind(train_x, class = train_y)
 train_data$class <- as.numeric(train_data$class) - 1
-smote_result <- SMOTE(train_data[ , -ncol(train_data)],  # Features
-                      train_data$class,                 # Target
-                      K = 5,                            # Number of neighbors
-                      dup_size = 2)                     # Oversampling factor
+
+smote_data <- smote(class ~ ., data = train_data, perc.over = 200, k = 5, perc.under = 100)
+
+smote_result <- smote(class ~ ., data = train_data, perc.over = 100, perc.under = 200)
 
 
 train_data_balanced <- train_data_balanced %>% sample_frac(1)
