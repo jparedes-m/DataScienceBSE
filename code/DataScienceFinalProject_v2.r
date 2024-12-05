@@ -15,7 +15,7 @@ library(randomForest)
 library(xgboost)
 library(glmnet)
 library(pROC)
-library(FNN)
+library(devtools)
 
 # [1] Data ----
 ## Reading, selecting variables, and making numerical some categorical variables.
@@ -24,12 +24,6 @@ data <- read.csv('https://raw.githubusercontent.com/jparedes-m/DataScienceBSE/re
     select(age, personal_status, job, housing, savings_status, checking_status, credit_amount, duration, purpose, credit_history, property_magnitude, housing, existing_credits, num_dependents, foreign_worker, installment_commitment, residence_since, class) %>% 
     separate(personal_status, into = c("sex", "p_status"), sep = " ") %>%
     mutate(class = ifelse(class == "good", 0, 1)) %>% 
-    mutate(job = case_when(
-        job == "unemp/unskilled non res" ~ 0,
-        job == "unskilled resident" ~ 1,
-        job == "skilled" ~ 2,
-        job == "high qualif/self emp/mgmt" ~ 3,
-        TRUE ~ NA)) %>% 
     mutate(savings_status = case_when(
         savings_status == "no known savings" ~ 'no known savings',
         savings_status == "<100" ~ "little",
@@ -300,6 +294,8 @@ df <- df %>% mutate(across(all_of(num_vars), scale))
 
 # [5] Models ----
 ## [5.0] Train-test split ----
+set.seed(1)
+
 train_index <- sample(1:nrow(df), 0.75 * nrow(df))
 X <- df %>% select(-class)
 y <- factor(df$class, levels = c(0,1), labels = c("good", "bad"))
@@ -313,16 +309,12 @@ rm(train_index)
 
 # how to adress class imbalance:
 train_data <- cbind(train_x, class = train_y)
+train_data$class <- as.numeric(train_data$class) - 1
+smote_result <- SMOTE(train_data[ , -ncol(train_data)],  # Features
+                      train_data$class,                 # Target
+                      K = 5,                            # Number of neighbors
+                      dup_size = 2)                     # Oversampling factor
 
-majority <- train_data %>% filter(class == "good")
-minority <- train_data %>% filter(class == "bad")
-
-majority_undersampled <- majority %>% sample_n(nrow(minority))
-#minority_oversampled <- minority[sample(1:nrow(minority), nrow(majority), replace = TRUE), ]
-
-train_data_balanced <- bind_rows(majority_undersampled, minority)
-
-#train_data_balanced <- bind_rows(majority, minority_oversampled)
 
 train_data_balanced <- train_data_balanced %>% sample_frac(1)
 table(train_data_balanced$class)
