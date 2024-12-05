@@ -141,8 +141,6 @@ save_pheatmap <- function(x, filename, width=12, height=12){
     print("Filename did not contain '.png' or '.pdf'")
   }
 }
-
-
 #save_pheatmap(map, "Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_4_graph.png", width = 10, height = 10)
 # [4] Preprocessing ----
 ## Feature engeenering
@@ -166,7 +164,7 @@ train_y <- y[train_index]
 
 test_x <- X[-train_index, ]
 test_y <- y[-train_index]
-rm(train_index)
+
 
 # how to adress class imbalance:
 train_data <- cbind(train_x, class = train_y)
@@ -178,6 +176,10 @@ train_data_balanced <- bind_rows(majority_undersampled, minority)
 train_data_balanced <- train_data_balanced %>% sample_frac(1)
 table(train_data_balanced$class)
 
+train_x <- X[train_index, ]
+train_y <- y[train_index]
+
+rm(train_index)
 ## [5.1] KNN ----
 control <- trainControl(method = "cv", number = 7, classProbs = TRUE)
 knn_model <- train(class ~ ., data = train_data_balanced, method = "knn", tuneGrid = data.frame(k = 1:25), trControl = control, metric = 'ROC')
