@@ -48,10 +48,10 @@ data <- read.csv('https://raw.githubusercontent.com/jparedes-m/DataScienceBSE/re
     mutate(checking_account = as.factor(checking_account), savings_account = as.factor(savings_account), property_magnitude = as.factor(property_magnitude)) %>% 
     relocate(class)
 
-# [2] Missing values / Factors treatment ----
+# [2] Factors treatment ----
 df <- data
 
-## Missing data treatment 
+## Check if there's missing values
 sapply(df, \(x) 100*mean(is.na(x)))
 
 # dummy cols!!! here
