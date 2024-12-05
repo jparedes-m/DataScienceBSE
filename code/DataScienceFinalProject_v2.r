@@ -43,6 +43,7 @@ data <- read.csv('https://raw.githubusercontent.com/jparedes-m/DataScienceBSE/re
         checking_status == "0<=X<200" ~ 'moderate',
         checking_status == ">=200" ~ 'rich',
         TRUE ~ NA)) %>% 
+    mutate(repayment_burden = credit_amount / duration) %>%
     rename(savings_account = savings_status, checking_account = checking_status) %>%
     mutate(checking_account = as.factor(checking_account), savings_account = as.factor(savings_account), property_magnitude = as.factor(property_magnitude)) %>% 
     relocate(class)
