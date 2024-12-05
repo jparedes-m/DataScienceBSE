@@ -322,9 +322,8 @@ train_data_balanced <- train_data_balanced %>% sample_frac(1)
 table(train_data_balanced$class)
 
 ## [5.1] KNN ----
-
 control <- trainControl(method = "cv", number = 7, classProbs = TRUE)
-knn_model <- train(class ~ ., data = train_data, method = "knn", tuneGrid = data.frame(k = 1:25), trControl = control, metric = 'ROC')
+knn_model <- train(class ~ ., data = train_data_balanced, method = "knn", tuneGrid = data.frame(k = 1:25), trControl = control, metric = 'ROC')
 
 best_k <- knn_model$bestTune$k
 # instead of hard classification we will use the class probabilities
@@ -345,7 +344,7 @@ for(ntree in ntree_grid){
     rf_grid <- expand.grid(mtry = mtry_grid)
     rf_tuned <- train(
         class ~ ., 
-        data = train_data, 
+        data = train_data_balanced, 
         method = "rf",
         trControl = control,
         tuneGrid = rf_grid, 
@@ -371,7 +370,7 @@ cat("Best ntree:", best_result$ntree, "\n")
 cat("Best mtry:", best_result$best_mtry, "\n")
 cat("Best Accuracy:", best_result$accuracy, "\n")
 
-rf_model <- randomForest(class ~ .,  data = train_data, ntree = best_result$ntree, mtry = best_result$best_mtry)
+rf_model <- randomForest(class ~ .,  data = train_data_balanced, ntree = best_result$ntree, mtry = best_result$best_mtry)
 rf_predictions <- predict(rf_model, newdata = test_x)
 conf_matrix_rf <- confusionMatrix(rf_predictions, test_y)
 
@@ -381,7 +380,7 @@ rf_probabilities <- predict(rf_model, newdata = test_x, type = "prob")
 roc_rf <- roc(test_y, rf_probabilities[, "bad"])
 
 ## [5.3] XGBoost ----
-train_matrix <- model.matrix(class ~ ., data = train_data)[, -1]
+train_matrix <- model.matrix(class ~ ., data = train_data_balanced)[, -1]
 test_matrix <- model.matrix(~ ., data = test_x)[, -1]
 train_label <- train_y
 test_label <- test_y
@@ -399,7 +398,7 @@ xgb_probabilities <- predict(xgb_model, newdata = test_matrix, type = "prob")
 roc_xgb <- roc(test_label, xgb_probabilities[, "bad"])
 
 ## [5.4] Elastic net with logit ----
-train_matrix <- model.matrix(class ~ ., data = train_data)[, -1]
+train_matrix <- model.matrix(class ~ ., data = train_data_balanced)[, -1]
 test_matrix <- model.matrix(~ ., data = test_x)[, -1]
 
 train_label <- as.numeric(train_y)-1
@@ -496,7 +495,7 @@ conf_matrix_lasso <- confusionMatrix(lasso_predictions, test_label_factor)
 roc_lasso <- roc(test_label, as.vector(lasso_probabilities))
 
 # Logit without penalization
-logit_model <- glm(class ~ ., data = train_data, family = "binomial")
+logit_model <- glm(class ~ ., data = train_data_balanced, family = "binomial")
 logit_probabilities <- predict(logit_model, newdata = test_x, type = "response")
 logit_predictions <- ifelse(logit_probabilities > 0.5, 1, 0)
 logit_predictions <- factor(logit_predictions, levels = c(0, 1))
