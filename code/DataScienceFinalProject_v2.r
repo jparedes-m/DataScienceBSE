@@ -170,13 +170,11 @@ rm(train_index)
 
 # how to adress class imbalance:
 train_data <- cbind(train_x, class = train_y)
-train_data$class <- as.numeric(train_data$class) - 1
+majority <- train_data %>% filter(class == "good")
+minority <- train_data %>% filter(class == "bad")
+majority_undersampled <- majority %>% sample_n(nrow(minority))
 
-smote_data <- smote(class ~ ., data = train_data, perc.over = 200, k = 5, perc.under = 100)
-
-smote_result <- smote(class ~ ., data = train_data, perc.over = 100, perc.under = 200)
-
-
+train_data_balanced <- bind_rows(majority_undersampled, minority)
 train_data_balanced <- train_data_balanced %>% sample_frac(1)
 table(train_data_balanced$class)
 
