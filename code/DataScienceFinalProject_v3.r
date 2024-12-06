@@ -333,7 +333,7 @@ ggplot(data, aes(x = existing_credits^2, y = as.numeric(class))) +
   labs(x = "existing_credits  Squared", y = "Class (Numeric)") +
   theme_minimal()
 
-#repayment burden has 3 people about 1,000 which is unrepresentative/extremely above the Q3 of the sample
+#repayment burden has 3 people about 1,000 which is unrepresentative/extremely above the Q3 of the sample (outliers)
 df <- df[df$repayment_burden<1000,]
 #taking the log of age due to is right skew 
 df <- df %>% mutate(age=log(1+age))
@@ -421,22 +421,13 @@ for(ntree in ntree_grid){
 best_ntree <- names(which.max(sapply(rf_results, function(x) x$accuracy)))
 best_result <- rf_results[[best_ntree]]
 
-# Print the best parameters
-cat("Best ntree:", best_result$ntree, "\n")
-cat("Best mtry:", best_result$best_mtry, "\n")
-cat("Best Accuracy:", best_result$accuracy, "\n")
-
 rf_model <- randomForest(class ~ .,  data = train_data_balanced, ntree = best_result$ntree, mtry = best_result$best_mtry)
 rf_predictions <- predict(rf_model, newdata = test_x)
 conf_matrix_rf <- confusionMatrix(rf_predictions, test_y)
-
 rf_probabilities <- predict(rf_model, newdata = test_x, type = "prob")
-
-# compute the ROC of this model
 roc_rf <- roc(test_y, rf_probabilities[, "bad"])
 
 ### [5.2.1] Variable importance ----
-#sort( dTree$variable.importance/max(dTree$variable.importance),decreasing=TRUE)
 importance_table <- importance(rf_model)
 importance_df <- as.data.frame(importance_table)
 
@@ -445,7 +436,6 @@ Normalized <- importance_df %>%
   arrange(desc(Normalized)) %>%
   select(Normalized)
 # Keep only the desired columns
-#Normalized <- importance_df[, c("Normalized")]
 
 # Add variable names as a column
 Normalized <- tibble::rownames_to_column(Normalized, "Variable")
@@ -455,7 +445,7 @@ print(Normalized)
 # Generate LaTeX table using stargazer
 stargazer(as.matrix(Normalized), type = "latex", summary = FALSE,
           title = "Random Forest Variable Importance", align = TRUE)
-#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/variable_importance_plot_RF.png", width = 1200, height = 800, res = 150)
+
 # Step 4: Plot the variable importance
 ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
@@ -484,26 +474,18 @@ conf_matrix_xgb <- confusionMatrix(xgb_predictions, test_label)
 xgb_probabilities <- predict(xgb_model, newdata = test_matrix, type = "prob")
 
 roc_xgb <- roc(test_label, xgb_probabilities[, "bad"])
-
-# Step 1: Extract feature importance
+### [5.3.1] Variable importance ----
 importance <- varImp(xgb_model)
-
-# Step 2: Convert to a data frame
 importance_df <- as.data.frame(importance$importance)
 importance_df$Feature <- rownames(importance_df)
-
-# Step 3: Normalize the importance
 importance_df <- importance_df %>%
   mutate(NormalizedImportance = Overall / max(Overall)) %>%
   arrange(desc(NormalizedImportance)) %>%
   select(Feature, NormalizedImportance)
 
-# Generate LaTeX table using stargazer
 stargazer(as.matrix(Normalized), type = "latex", summary = FALSE,
           title = "XGBoost Variable Importance", align = TRUE)
 
-#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/variable_importance_plot_XGB.png", width = 1200, height = 800, res = 150)
-# Step 4: Plot the variable importance
 ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
   coord_flip() +
@@ -517,90 +499,51 @@ ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
 ## [5.4] Elastic net with logit ----
 train_matrix <- model.matrix(class ~ ., data = train_data_balanced)[, -1]
 test_matrix <- model.matrix(~ ., data = test_x)[, -1]
-
 train_label <- as.numeric(train_y)-1
 test_label <- as.numeric(test_y)-1
 
-# Cross-validation to find the best alpha
+### [5.4.0] Cross-validation to find the best alpha ----
 models <- list()
 results <- data.frame(alpha = numeric(), lambda = numeric(), auc = numeric())
 for (i in 0:50) {
     name <- paste0("alpha", i / 50)
     model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = i / 50, lambda = NULL)
     models[[name]] <- model
-    
-    # Predicciones como probabilidades
     probabilities <- predict(model, newx = test_matrix, s = "lambda.min", type = "response")
-    
-    # Calcular AUC
     auc <- suppressMessages(auc(test_label, probabilities))
-    
-    # Guardar resultados
     results <- rbind(results, data.frame(alpha = i / 50, lambda = model$lambda.min, auc = auc))
 }
-
-# Seleccionar el mejor α basado en AUC
 results <- results %>% filter(alpha != 0 & alpha != 1) %>% arrange(desc(auc))
 alpha <- results[1, "alpha"]
-
-# Ridge Model
+### [5.4.1] Ridge Model ----
 ridge_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 0, lambda = NULL)
-#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/ridge_graph.png", width = 800, height = 600) 
-plot(ridge_model)
-title("Ridge Coefficient Shrinkage Plot\n")
-
-# Print the coefficients for the Ridge model at lambda.1se
-ridge_coefs_1se <- coef(ridge_model, s = "lambda.1se")
-print(ridge_coefs_1se)
-# Print the coefficients for the Ridge model at lambda.1se
-ridge_coefs_min <- coef(ridge_model, s = "lambda.min")
-print(ridge_coefs_min)
-
 ridge_probabilities <- predict(ridge_model, newx = test_matrix, s = "lambda.min", type = "response")
 ridge_predictions <- predict(ridge_model, newx = test_matrix, s = "lambda.min", type = "class")
 ridge_predictions <- factor(ridge_predictions, levels = c(0, 1))
 test_label_factor <- factor(test_label, levels = c(0, 1))
-
 conf_matrix_ridge <- confusionMatrix(ridge_predictions, test_label_factor)
-
 roc_ridge <- roc(test_label, ridge_probabilities)
-# Generate the plot and add the title
 
-
-# Elastic net
+#### [5.4.1.1] Shrinkage
+ridge_coefs_1se <- coef(ridge_model, s = "lambda.1se") %>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_1se = s1)
+ridge_coefs_min <- coef(ridge_model, s = "lambda.min") %>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_min = s1)
+ridge_coefs <- left_join(ridge_coefs_1se, ridge_coefs_min, by = "variable") %>% filter(lambda_min != 0 | lambda_1se != 0)
+### [5.4.2] Elastic net ----
 elastic_net_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = alpha, lambda = NULL)
-png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/elastic_graph.png", width = 800, height = 600) 
-plot(elastic_net_model)
-title("Elastic Net Coefficient Shrinkage Plot\n")
-
-
-# Print the coefficients for the Ridge model at lambda.1se
-elastic_coefs_1se <- coef(elastic_net_model, s = "lambda.1se")
-print(elastic_coefs_1se)
-# Print the coefficients for the Ridge model at lambda.1se
-elastic_coefs_min <- coef(elastic_net_model, s = "lambda.min")
-print(elastic_coefs_min)
-
 elastic_net_probabilities <- predict(elastic_net_model, newx = test_matrix, s = "lambda.min", type = "response")
 elastic_net_predictions <- predict(elastic_net_model, newx = test_matrix, s = "lambda.min", type = "class")
 elastic_net_predictions <- factor(elastic_net_predictions, levels = c(0, 1))
 test_label_factor <- factor(test_label, levels = c(0, 1))
 conf_matrix_elastic <- confusionMatrix(elastic_net_predictions, test_label_factor)
-
 roc_elastic <- roc(test_label, as.vector(elastic_net_probabilities))
 
-# Lasso
+#### [5.4.2.1] Shrinkage 
+elastic_coefs_1se <- coef(elastic_net_model, s = "lambda.1se")%>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_1se = s1)
+elastic_coefs_min <- coef(elastic_net_model, s = "lambda.min")%>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_min = s1)
+elastic_coefs <- left_join(elastic_coefs_1se, elastic_coefs_min, by = "variable") %>% filter(lambda_min != 0 | lambda_1se != 0)
+
+### [5.4.3] Lasso ----
 lasso_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 1, lambda = NULL)
-
-#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/lasso_graph.png", width = 800, height = 600) 
-plot(lasso_model)
-title("Lasso Coefficient Shrinkage Plot\n")
-
-lasso_coefs_min <- coef(lasso_model, s = "lambda.min")
-print(lasso_coefs_min)
-lasso_coefs_1se <- coef(lasso_model, s = "lambda.1se")
-print(lasso_coefs_1se)
-
 lasso_probabilities <- predict(lasso_model, newx = test_matrix, s = "lambda.min", type = "response")
 lasso_predictions <- predict(lasso_model, newx = test_matrix, s = "lambda.min", type = "class")
 lasso_predictions <- factor(lasso_predictions, levels = c(0, 1))
@@ -608,7 +551,11 @@ test_label_factor <- factor(test_label, levels = c(0, 1))
 conf_matrix_lasso <- confusionMatrix(lasso_predictions, test_label_factor)
 roc_lasso <- roc(test_label, as.vector(lasso_probabilities))
 
-# Logit without penalization
+#### [5.4.3.1] Shrinkage
+lasso_coefs_min <- coef(lasso_model, s = "lambda.min")%>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_min = s1)
+lasso_coefs_1se <- coef(lasso_model, s = "lambda.1se")%>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_1se = s1)
+lasso_coefs <- left_join(lasso_coefs_1se, lasso_coefs_min, by = "variable") %>% filter(lambda_min != 0 | lambda_1se != 0)
+### [5.4.4] Logit without penalization ----
 logit_model <- glm(class ~ ., data = train_data_balanced, family = "binomial")
 logit_probabilities <- predict(logit_model, newdata = test_x, type = "response")
 logit_predictions <- ifelse(logit_probabilities > 0.5, 1, 0)
@@ -617,56 +564,9 @@ test_label <- factor(test_label, levels = c(0, 1))
 conf_matrix_logit <- confusionMatrix(logit_predictions, test_label)
 roc_logit <- roc(test_label, logit_probabilities)
 
-# Define a list of models and their corresponding titles
-models <- list(
-  lasso_model = "Lasso Coefficients",
-  elastic_net_model = "Elastic Net Coefficients",
-  ridge_model = "Ridge Coefficients"
-)
-
-# Loop over the models
-for (model_name in names(models)) {
-  # Get the model object
-  #model <- get(model_name)
-  
-  # Extract coefficients for lambda.min and lambda.1se
-  coefs_min <- coef(model, s = "lambda.min")
-  coefs_1se <- coef(model, s = "lambda.1se")
-  
-  # Convert coefficients to data frames
-  table_min <- as.data.frame(as.matrix(coefs_min))
-  table_1se <- as.data.frame(as.matrix(coefs_1se))
-  
-  # Add variable names
-  table_min <- tibble::rownames_to_column(table_min, "Variable")
-  table_1se <- tibble::rownames_to_column(table_1se, "Variable")
-  
-  # Rename columns
-  colnames(table_min)[2] <- "Coefficient_Min"
-  colnames(table_1se)[2] <- "Coefficient_1se"
-  
-  # Merge the tables
-  combined_table <- merge(table_min, table_1se, by = "Variable")
-  
-  # Filter non-zero coefficients
-  combined_table <- combined_table %>%
-    filter(Coefficient_Min != 0 | Coefficient_1se != 0)
-  
-  # Generate LaTeX output using Stargazer
-  latex_output <- capture.output(
-    stargazer(as.matrix(combined_table), type = "latex", summary = FALSE,
-              title = models[[model_name]], align = TRUE)
-  )
-  
-  
-  # Save the LaTeX output to a text file
-  output_file <- paste0("/Users/rebeccahess/Documents/BSE Sem 1/datascience/", model_name, "_coefficients.txt")
-  writeLines(latex_output, con = output_file)
-  
-}
-
 # [6] Results ----
-### Get all the confusion matrices in a list for comparison
+## [6.1] Accuracy ----
+# Get all the confusion matrices in a list for comparison
 confusion_matrices <- list(knn = conf_matrix_knn, rf = conf_matrix_rf, xgb = conf_matrix_xgb, ridge = conf_matrix_ridge, elastic_net = conf_matrix_elastic, lasso = conf_matrix_lasso, logit = conf_matrix_logit)
 
 ## Get the accuracy, and the CI into a dataframe
@@ -684,7 +584,6 @@ accuracy  <- accuracy %>% mutate(model = case_when(model == "knn" ~ "K-Nearest-N
                                                    model == 'logit' ~ "Logit")) %>% 
             mutate(model = fct_relevel(model, "Logit", "Lasso", "Elastic Net", "Ridge", "XGBoost", "Random Forest", "K-Nearest-Neighbors"))
 
-#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/accuracy_curves_plot.png", width = 1200, height = 800, res = 150)
 # plot this results in a geom_point plot with error bars
 ggplot(accuracy, aes(x = model, y = accuracy)) +
     geom_point(size = 3) +
@@ -698,7 +597,7 @@ ggplot(accuracy, aes(x = model, y = accuracy)) +
           axis.text.x = element_text(angle = 270, vjust = 0.5, hjust=1)) +
     scale_y_continuous(n.breaks = 20)
 
-#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/roc_curves_plot.png", width = 1200, height = 800, res = 150)
+## [6.2] ROC Curves ----
 # Plot all the roc curves with the AUC in the legend with the plot function
 plot(y=roc_knn$sensitivities, x=1-roc_knn$specificities, col = "red", lwd = 2, type = "l", main = "ROC Curves", xlab = "False Positive Rate", ylab = "True Positive Rate")
 lines(y=roc_rf$sensitivities, x=1-roc_rf$specificities, col = "blue", lwd = 2)
@@ -719,4 +618,15 @@ legend("bottomright",
        ),
        col = c("red", "blue", "green", "purple", "orange", "black", "brown"), 
        lwd = 2)
+
+## [6.3] Shrinkage plots and tables ----
+par(mfrow = c(3, 1))
+plot(ridge_model)
+title("Ridge Coefficient Shrinkage Plot\n")
+plot(elastic_net_model)
+title("Elastic Net Coefficient Shrinkage Plot\n")
+plot(lasso_model)
+title("Lasso Coefficient Shrinkage Plot\n")
+par(mfrow = c(1, 1))
+
 # End-of-File ----
