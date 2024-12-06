@@ -45,7 +45,8 @@ data <- read.csv('https://raw.githubusercontent.com/jparedes-m/DataScienceBSE/re
   mutate(checking_account = as.factor(checking_account), savings_account = as.factor(savings_account), property_magnitude = as.factor(property_magnitude)) %>% 
   relocate(class)
 
-# [2] Missing values / Factors treatment ----
+# [2] Missing values / Factors treatment ---- 
+
 df <- data
 
 ## Missing data treatment 
@@ -434,11 +435,9 @@ rf_probabilities <- predict(rf_model, newdata = test_x, type = "prob")
 # compute the ROC of this model
 roc_rf <- roc(test_y, rf_probabilities[, "bad"])
 
-# Extract variable importance
+### [5.2.1] Variable importance ----
 #sort( dTree$variable.importance/max(dTree$variable.importance),decreasing=TRUE)
 importance_table <- importance(rf_model)
-
-# Convert to a data frame
 importance_df <- as.data.frame(importance_table)
 
 Normalized <- importance_df %>%
@@ -456,7 +455,7 @@ print(Normalized)
 # Generate LaTeX table using stargazer
 stargazer(as.matrix(Normalized), type = "latex", summary = FALSE,
           title = "Random Forest Variable Importance", align = TRUE)
-png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/variable_importance_plot_RF.png", width = 1200, height = 800, res = 150)
+#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/variable_importance_plot_RF.png", width = 1200, height = 800, res = 150)
 # Step 4: Plot the variable importance
 ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
