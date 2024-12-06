@@ -177,14 +177,12 @@ save_pheatmap <- function(x, filename, width=12, height=12){
     print("Filename did not contain '.png' or '.pdf'")
   }
 }
-
 #save_pheatmap(map, "/Users/rebeccahess/Documents/BSE Sem 1/datascience/heatmap.png", width = 10, height = 10)
 # Specify the variable of interest
 target_variable <- "class"
 # Calculate correlation with the rest of the variables
 correlations <- sapply(df, function(x) cor(df[[target_variable]], x, use = "complete.obs"))
 sorted_correlations <- sort(correlations, decreasing = TRUE)
-# View the correlations
 print(sorted_correlations)
 
 #analysis of the variables that likely need transformation of some kind
@@ -199,7 +197,6 @@ data_normalized <- data %>%
 data_long <- data_normalized %>%
   pivot_longer(cols = all_of(numerical_vars), names_to = "Variable", values_to = "Value")
 
-#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/norm_numerical_box_plots.png", width = 1200, height = 800, res = 150)
 ggplot(data_long, aes(x = Variable, y = Value, fill = as.factor(class))) +
   geom_boxplot(position = position_dodge(width = 0.8)) +
   labs(
@@ -629,4 +626,8 @@ plot(lasso_model)
 title("Lasso Coefficient Shrinkage Plot\n")
 par(mfrow = c(1, 1))
 
+### [6.3.1] Shrinkage Coefficients
+ridge_coefs
+elastic_coefs
+lasso_coefs
 # End-of-File ----
