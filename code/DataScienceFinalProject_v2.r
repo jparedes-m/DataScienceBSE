@@ -49,7 +49,6 @@ df <- data
 ## Check if there's missing values
 sapply(df, \(x) 100*mean(is.na(x)))
 
-# dummy cols!!! here
 
 # [3] Exploratory data analysis ----
 
@@ -183,7 +182,6 @@ train_y <- y[train_index]
 
 test_x <- X[-train_index, ]
 test_y <- y[-train_index]
-
 
 # how to adress class imbalance:
 train_data <- cbind(train_x, class = train_y)

@@ -15,8 +15,11 @@ library(randomForest)
 library(xgboost)
 library(glmnet)
 library(pROC)
-library(FNN)
 library(stargazer)
+library(gridExtra)
+library(fastDummies)
+library(janitor)
+
 # [1] Data ----
 ## Reading, selecting variables, and making numerical some categorical variables.
 
@@ -48,212 +51,70 @@ df <- data
 ## Missing data treatment 
 sapply(df, \(x) 100*mean(is.na(x)))
 
-
 # [3] Exploratory data analysis ----
-## [3.1] Univariate analysis ----
-data_long <- data %>% select(sex, age, credit_amount, duration) %>%
-  pivot_longer(cols = c(age, credit_amount, duration), names_to = "variable", values_to = "value") %>% 
-  mutate(variable = case_when(
-    variable == "age" ~ "Age (in years)",
-    variable == "credit_amount" ~ "Credit Amount (in DM)",
-    variable == "duration" ~ "Duration (in months)"))
+## [3.1] Summary statistics [CATA] ----
+# Ensure 'class' is a factor
+data$class <- as.factor(data$class)
 
-ggplot(data_long, aes(x = value, fill = sex)) +
-  geom_histogram(aes(y = after_stat(density)), position = "identity", bins = 30, alpha = 0.5) +
-  geom_density(aes(color = sex), linewidth = 1, fill = NA) +
-  labs(y = "Density", x = " ", title = "Distribution by Sex", fill = "Sex:", color = "Sex:") +
-  theme_light() +
-  scale_x_continuous(n.breaks = 17) +
-  scale_y_continuous(n.breaks = 10) +
-  facet_wrap(~ variable, scales = "free") +
-  scale_fill_manual(values = c("male" = "cornflowerblue", "female" = "firebrick")) +
-  scale_color_manual(values = c("male" = "cornflowerblue", "female" = "firebrick")) +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-        axis.title.y = element_text(size = 12),
-        axis.title.x = element_text(size = 12), 
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-        strip.text.x = element_text(face = "bold", color = "black", size = 12),
-        legend.position = "bottom")
+# Updated list of categorical variables
+cat_vars <- c("sex", "p_status", "job", "housing", "savings_account", 
+              "checking_account", "purpose", "credit_history", 
+              "property_magnitude", "foreign_worker")
 
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_1_graph.png", width = 9, height = 10, bg = "white")
-dev.off()
-## [3.2] Credit amount ----
-data %>% mutate(p_status = ifelse(p_status == "single"| p_status == "div/sep", "Single", "Married")) %>% 
-ggplot(aes(x = credit_amount)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "dodgerblue3", alpha = 0.7) +
-    geom_density(color = "blue", linewidth = 1) +
-    labs(y = "Density", x = "Credit Amount in DM", title = "Credit Amount Distribution by Status") +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-          strip.text.x = element_text(face = "bold", color = "black", size = 12),
-          axis.title.y = element_text(size = 12),
-          axis.title.x = element_text(size = 12),
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~ p_status, scales = "free", nrow = 2)
+# Melt the dataset for easier plotting
+melted_data <- data %>%
+  select(class, all_of(cat_vars)) %>%
+  pivot_longer(cols = all_of(cat_vars), names_to = "Variable", values_to = "Category") %>%
+  group_by(Variable, Category, class) %>%
+  summarise(Frequency = n(), .groups = "drop")
 
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_2_1_graph.png", width = 9, height = 10, bg = "white")
+# Create a list to store the plots
+plot_list <- list()
 
-data %>%
-  mutate(p_status = ifelse(p_status == "single" | p_status == "div/sep", "Single", "Married")) %>%
-  ggplot(aes(x = credit_amount, fill = p_status)) +
-  geom_histogram(aes(y = after_stat(density)), bins = 30, alpha = 0.7, position = "identity") +
-  geom_density(aes(color = p_status), linewidth = 1, fill = NA) +
-  labs(
-    y = "Density",
-    x = "Credit Amount in DM",
-    title = "Credit Amount Distribution by Marital Status",
-    fill = "Marital Status:",
-    color = "Marital Status:"
-  ) +
-  theme_light() +
-  scale_x_continuous(n.breaks = 20) +
-  scale_y_continuous(n.breaks = 10) +
-  scale_fill_manual(values = c("Single" = "cornflowerblue", "Married" = "firebrick")) +
-  scale_color_manual(values = c("Single" = "cornflowerblue", "Married" = "firebrick")) +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-    axis.title.y = element_text(size = 12),
-    axis.title.x = element_text(size = 12),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    strip.text.x = element_text(face = "bold", color = "black", size = 12),
-    legend.position = "bottom"
-  )
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_2_2_graph.png", width = 9, height = 10, bg = "white")
-
-ggplot(data, aes(x = credit_amount)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "dodgerblue3", alpha = 0.7) +
-    geom_density(color = "blue", linewidth = 1) +
-    labs(y = "Density", x = "Credit Amount in DM", title = "Credit Amount Distribution by product") +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-          strip.text.x = element_text(face = "bold", color = "black", size = 12),
-          axis.title.y = element_text(size = 12),
-          axis.title.x = element_text(size = 12),
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~ purpose, scales = "free", nrow = 2)
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_2_3_graph.png", width = 15, height = 10, bg = "white")
-dev.off()
-data %>% mutate(class = ifelse(class == 0, "Good", "Bad")) %>%
-ggplot(aes(x = credit_amount, fill = sex)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, alpha = 0.7, position = "identity") +
-    geom_density(aes(color = sex), linewidth = 1, fill = NA) +
-    labs(
-        y = "Density",
-        x = "Credit Amount in DM",
-        title = "Credit Amount Distribution by Class and Sex",
-        fill = "Sex",
-        color = "Sex"
-    ) +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
+# Generate a barplot for each variable
+for (var in unique(melted_data$Variable)) {
+  plot_data <- melted_data %>% filter(Variable == var)
+  
+  p <- ggplot(plot_data, aes(x = Category, y = Frequency, fill = class)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(title = paste("Frequency of", var, "by Class"),
+         x = var, y = "Frequency") +
+    scale_fill_manual(values = c("salmon", "mediumaquamarine"), 
+                      labels = c("Bad", "Good")) +
+    theme_minimal() +
     theme(
-        plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-        strip.text.x = element_text(face = "bold", color = "black", size = 12),
-        axis.title.y = element_text(size = 12),
-        axis.title.x = element_text(size = 12),
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-        legend.position = "bottom") +
-    facet_wrap(~ class, scales = "free", nrow = 2) +
-    scale_fill_manual(values = c("male" = "cornflowerblue", "female" = "firebrick")) +
-    scale_color_manual(values = c("male" = "cornflowerblue", "female" = "firebrick"))
-dev.off()
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_2_4_graph.png", width = 9, height = 10, bg = "white")
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+      axis.text.y = element_text(size = 10),
+      axis.title.x = element_text(size = 12, face = "bold"),
+      axis.title.y = element_text(size = 12, face = "bold"),
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      legend.position = "top",
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 10)
+    )
+  
+  # Add the plot to the list
+  plot_list[[var]] <- p
+}
 
-## [3.3] Duration ----
-data %>% mutate(p_status = ifelse(p_status == "single"| p_status == "div/sep", "Single", "Married")) %>% 
-ggplot(aes(x = duration)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "dodgerblue3", alpha = 0.7) +
-    geom_density(color = "blue", linewidth = 1) +
-    labs(y = "Density", x = "Duration (in months)", title = "Credit Duration Distribution by Status") +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-          strip.text.x = element_text(face = "bold", color = "black", size = 12),
-          axis.title.y = element_text(size = 12),
-          axis.title.x = element_text(size = 12),
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~ p_status, scales = "free", nrow = 2)
+# Arrange plots into a grid layout (4 per page)
+num_plots <- length(plot_list)
+plots_per_page <- 4
+pages <- ceiling(num_plots / plots_per_page)
 
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_3_1_graph.png", width = 9, height = 10, bg = "white")
-dev.off()
-data %>%
-  mutate(p_status = ifelse(p_status == "single" | p_status == "div/sep", "Single", "Married")) %>%
-  ggplot(aes(x = duration, fill = p_status)) +
-  geom_histogram(aes(y = after_stat(density)), bins = 30, alpha = 0.7, position = "identity") +
-  geom_density(aes(color = p_status), linewidth = 1, fill = NA) +
-  labs(
-    y = "Density",
-    x = "Duration (in months)",
-    title = "Credit Duration Distribution by Marital Status",
-    fill = "Marital Status:",
-    color = "Marital Status:"
-  ) +
-  theme_light() +
-  scale_x_continuous(n.breaks = 20) +
-  scale_y_continuous(n.breaks = 10) +
-  scale_fill_manual(values = c("Single" = "cornflowerblue", "Married" = "firebrick")) +
-  scale_color_manual(values = c("Single" = "cornflowerblue", "Married" = "firebrick")) +
-  theme(
-    plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-    axis.title.y = element_text(size = 12),
-    axis.title.x = element_text(size = 12),
-    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-    strip.text.x = element_text(face = "bold", color = "black", size = 12),
-    legend.position = "bottom"
-  )
-dev.off()
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_3_2_graph.png", width = 9, height = 10, bg = "white")
+for (page in 1:pages) {
+  # Select plots for the current page
+  start_idx <- (page - 1) * plots_per_page + 1
+  end_idx <- min(page * plots_per_page, num_plots)
+  current_plots <- plot_list[start_idx:end_idx]
+  
+  # Arrange the selected plots in a grid
+  grid_plot <- grid.arrange(grobs = current_plots, ncol = 2, top = paste("Page", page))
+  
+  # Print the grid plot
+  print(grid_plot)
+}
 
-ggplot(data, aes(x = duration)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "dodgerblue3", alpha = 0.7) +
-    geom_density(color = "blue", linewidth = 1) +
-    labs(y = "Density", x = "Duration (in months)", title = "Credit Duration Distribution by product") +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-          strip.text.x = element_text(face = "bold", color = "black", size = 12),
-          axis.title.y = element_text(size = 12),
-          axis.title.x = element_text(size = 12),
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-    facet_wrap(~ purpose, scales = "free", nrow = 2)
-
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_3_3_graph.png", width = 15, height = 10, bg = "white")
-dev.off()
-data %>% mutate(class = ifelse(class == 0, "Good", "Bad")) %>%
-ggplot(aes(x = duration, fill = sex)) +
-    geom_histogram(aes(y = after_stat(density)), bins = 30, alpha = 0.7, position = "identity") +
-    geom_density(aes(color = sex), linewidth = 1, fill = NA) +
-    labs(
-        y = "Density",
-        x = "Duration (in months)",
-        title = "Credit Duration Distribution by Class and Sex",
-        fill = "Sex",
-        color = "Sex"
-    ) +
-    theme_light() +
-    scale_x_continuous(n.breaks = 20) +
-    scale_y_continuous(n.breaks = 10) +
-    theme(
-        plot.title = element_text(hjust = 0.5, face = "bold", size = 15),
-        strip.text.x = element_text(face = "bold", color = "black", size = 12),
-        axis.title.y = element_text(size = 12),
-        axis.title.x = element_text(size = 12),
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
-        legend.position = "bottom") +
-    facet_wrap(~ class, scales = "free", nrow = 2) +
-    scale_fill_manual(values = c("male" = "cornflowerblue", "female" = "firebrick")) +
-    scale_color_manual(values = c("male" = "cornflowerblue", "female" = "firebrick"))
-dev.off()
-#ggsave("Aplicaciones/Overleaf/Foundations of Data Science - BSE Group/assets/figures/3_3_4_graph.png", width = 9, height = 10, bg = "white")
 # Calculate the proportion of each class
 class_proportions <- table(data$class) / nrow(data)
 
@@ -273,12 +134,8 @@ box()
 
 # Add a grid for better visualization
 grid()
-## [3.4] Correlation matrix ----
-dev.off()
 
 # [4] Preprocessing ----
-library(fastDummies)
-# dummy cols!!! here
 categorical_vars <- c("sex","p_status", "housing", "job", "savings_account", "checking_account", "purpose", "credit_history", "property_magnitude", "foreign_worker")
 # Create dummy columns
 df <- dummy_cols(
@@ -291,11 +148,9 @@ df <- dummy_cols(
   omit_colname_prefix = FALSE         # Keeps the column name as prefix
 )
 
-library(janitor)
 # Clean column names
 df <- df %>%
   janitor::clean_names()
-
 
 map <- pheatmap(cor(df, use = "complete.obs"), 
          display_numbers = TRUE, 
@@ -322,9 +177,7 @@ save_pheatmap <- function(x, filename, width=12, height=12){
   }
 }
 
-
-save_pheatmap(map, "/Users/rebeccahess/Documents/BSE Sem 1/datascience/heatmap.png", width = 10, height = 10)
-dev.off()
+#save_pheatmap(map, "/Users/rebeccahess/Documents/BSE Sem 1/datascience/heatmap.png", width = 10, height = 10)
 # Specify the variable of interest
 target_variable <- "class"
 # Calculate correlation with the rest of the variables
@@ -332,7 +185,6 @@ correlations <- sapply(df, function(x) cor(df[[target_variable]], x, use = "comp
 sorted_correlations <- sort(correlations, decreasing = TRUE)
 # View the correlations
 print(sorted_correlations)
-
 
 #analysis of the variables that likely need transformation of some kind
 # List of variables to include in the boxplots
@@ -346,7 +198,7 @@ data_normalized <- data %>%
 data_long <- data_normalized %>%
   pivot_longer(cols = all_of(numerical_vars), names_to = "Variable", values_to = "Value")
 
-png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/norm_numerical_box_plots.png", width = 1200, height = 800, res = 150)
+#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/norm_numerical_box_plots.png", width = 1200, height = 800, res = 150)
 ggplot(data_long, aes(x = Variable, y = Value, fill = as.factor(class))) +
   geom_boxplot(position = position_dodge(width = 0.8)) +
   labs(
@@ -362,7 +214,7 @@ ggplot(data_long, aes(x = Variable, y = Value, fill = as.factor(class))) +
     values = c("0" = "steelblue", "1" = "red"),
     labels = c("0" = "Good", "1" = "Bad")
   )
-dev.off()
+
 plot(histogram(data$num_dependents))
 plot(histogram(data$existing_credits))
 
@@ -372,19 +224,18 @@ ggplot(data, aes(x = age, y = as.numeric(class))) +
   geom_smooth(method = "loess") +
   labs(x = "Age", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = log(age), y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Log Age", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = age^2, y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Age Squared", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
 
 ## Squared wins credit amount 
 ggplot(data, aes(x = credit_amount, y = as.numeric(class))) +
@@ -392,19 +243,18 @@ ggplot(data, aes(x = credit_amount, y = as.numeric(class))) +
   geom_smooth(method = "loess") +
   labs(x = "Credit Amount", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = log(credit_amount), y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Log Credit Amount", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = credit_amount^2, y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Credit Amount Squared", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
 
 #repayment burden should be squared!!!!
 ggplot(data, aes(x = repayment_burden, y = as.numeric(class))) +
@@ -412,20 +262,18 @@ ggplot(data, aes(x = repayment_burden, y = as.numeric(class))) +
   geom_smooth(method = "loess") +
   labs(x = "Credit Amount", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = log(repayment_burden), y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Log Credit Amount", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = repayment_burden^2, y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Credit Amount Squared", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
-
 
 #log wins duration!!!!
 ggplot(data, aes(x = duration, y = as.numeric(class))) +
@@ -433,20 +281,18 @@ ggplot(data, aes(x = duration, y = as.numeric(class))) +
   geom_smooth(method = "loess") +
   labs(x = "Duration", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = log(duration), y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Log Duration", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = duration^2, y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Duration Squared", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
-
 
 #installment_commitment!!!! all linear who cares 
 ggplot(data, aes(x = installment_commitment, y = as.numeric(class))) +
@@ -454,20 +300,18 @@ ggplot(data, aes(x = installment_commitment, y = as.numeric(class))) +
   geom_smooth(method = "loess") +
   labs(x = "Installment Com", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = log(installment_commitment), y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Log Installment Com", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = installment_commitment^2, y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Installment Com Squared", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
-
 
 #installment_commitment!!!! all linear who cares 
 ggplot(data, aes(x = existing_credits, y = as.numeric(class))) +
@@ -475,20 +319,18 @@ ggplot(data, aes(x = existing_credits, y = as.numeric(class))) +
   geom_smooth(method = "loess") +
   labs(x = "existing_credits ", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = log(existing_credits), y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "Log existing_credits ", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
+
 ggplot(data, aes(x = existing_credits^2, y = as.numeric(class))) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "loess") +
   labs(x = "existing_credits  Squared", y = "Class (Numeric)") +
   theme_minimal()
-dev.off()
-
 
 #repayment burden has 3 people about 1,000 which is unrepresentative/extremely above the Q3 of the sample
 df <- df[df$repayment_burden<1000,]
@@ -496,7 +338,6 @@ df <- df[df$repayment_burden<1000,]
 df <- df %>% mutate(age=log(1+age))
 #taking the log of duration 
 df <- df %>% mutate(duration = log(1+duration))
-
 
 ## Feature engeenering
 ### Add: squared age, squared credit amount, squared duration, and squared number of dependents
@@ -522,7 +363,6 @@ train_y <- y[train_index]
 test_x <- X[-train_index, ]
 test_y <- y[-train_index]
 
-
 # how to adress class imbalance:
 train_data <- cbind(train_x, class = train_y)
 majority <- train_data %>% filter(class == "good")
@@ -535,8 +375,8 @@ table(train_data_balanced$class)
 
 train_x <- train_data_balanced %>% select(-class)
 train_y <- train_data_balanced$class
-## [5.1] KNN ----
 
+## [5.1] KNN ----
 control <- trainControl(method = "cv", number = 7, classProbs = TRUE)
 knn_model <- train(class ~ ., data = train_data_balanced, method = "knn", tuneGrid = data.frame(k = 1:25), trControl = control, metric = 'ROC')
 
@@ -601,14 +441,12 @@ importance_table <- importance(rf_model)
 # Convert to a data frame
 importance_df <- as.data.frame(importance_table)
 
-
 Normalized <- importance_df %>%
   mutate(Normalized = MeanDecreaseGini / max(MeanDecreaseGini, na.rm = TRUE)) %>%
   arrange(desc(Normalized)) %>%
   select(Normalized)
 # Keep only the desired columns
 #Normalized <- importance_df[, c("Normalized")]
-
 
 # Add variable names as a column
 Normalized <- tibble::rownames_to_column(Normalized, "Variable")
@@ -629,7 +467,7 @@ ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
     y = "Normalized Importance"
   ) +
   theme_minimal()
-dev.off()
+
 ## [5.3] XGBoost ----
 train_matrix <- model.matrix(class ~ ., data = train_data_balanced)[, -1]
 test_matrix <- model.matrix(~ ., data = test_x)[, -1]
@@ -665,7 +503,7 @@ importance_df <- importance_df %>%
 stargazer(as.matrix(Normalized), type = "latex", summary = FALSE,
           title = "XGBoost Variable Importance", align = TRUE)
 
-png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/variable_importance_plot_XGB.png", width = 1200, height = 800, res = 150)
+#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/variable_importance_plot_XGB.png", width = 1200, height = 800, res = 150)
 # Step 4: Plot the variable importance
 ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
@@ -676,7 +514,6 @@ ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
     y = "Normalized Importance"
   ) +
   theme_minimal()
-dev.off()
 
 ## [5.4] Elastic net with logit ----
 train_matrix <- model.matrix(class ~ ., data = train_data_balanced)[, -1]
@@ -709,10 +546,9 @@ alpha <- results[1, "alpha"]
 
 # Ridge Model
 ridge_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 0, lambda = NULL)
-png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/ridge_graph.png", width = 800, height = 600) 
+#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/ridge_graph.png", width = 800, height = 600) 
 plot(ridge_model)
 title("Ridge Coefficient Shrinkage Plot\n")
-dev.off()
 
 # Print the coefficients for the Ridge model at lambda.1se
 ridge_coefs_1se <- coef(ridge_model, s = "lambda.1se")
@@ -737,7 +573,7 @@ elastic_net_model <- cv.glmnet(x = train_matrix, y = train_label, family = "bino
 png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/elastic_graph.png", width = 800, height = 600) 
 plot(elastic_net_model)
 title("Elastic Net Coefficient Shrinkage Plot\n")
-dev.off()
+
 
 # Print the coefficients for the Ridge model at lambda.1se
 elastic_coefs_1se <- coef(elastic_net_model, s = "lambda.1se")
@@ -745,7 +581,6 @@ print(elastic_coefs_1se)
 # Print the coefficients for the Ridge model at lambda.1se
 elastic_coefs_min <- coef(elastic_net_model, s = "lambda.min")
 print(elastic_coefs_min)
-
 
 elastic_net_probabilities <- predict(elastic_net_model, newx = test_matrix, s = "lambda.min", type = "response")
 elastic_net_predictions <- predict(elastic_net_model, newx = test_matrix, s = "lambda.min", type = "class")
@@ -758,15 +593,14 @@ roc_elastic <- roc(test_label, as.vector(elastic_net_probabilities))
 # Lasso
 lasso_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 1, lambda = NULL)
 
-png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/lasso_graph.png", width = 800, height = 600) 
+#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/lasso_graph.png", width = 800, height = 600) 
 plot(lasso_model)
 title("Lasso Coefficient Shrinkage Plot\n")
-dev.off()
+
 lasso_coefs_min <- coef(lasso_model, s = "lambda.min")
 print(lasso_coefs_min)
 lasso_coefs_1se <- coef(lasso_model, s = "lambda.1se")
 print(lasso_coefs_1se)
-
 
 lasso_probabilities <- predict(lasso_model, newx = test_matrix, s = "lambda.min", type = "response")
 lasso_predictions <- predict(lasso_model, newx = test_matrix, s = "lambda.min", type = "class")
@@ -829,9 +663,8 @@ for (model_name in names(models)) {
   # Save the LaTeX output to a text file
   output_file <- paste0("/Users/rebeccahess/Documents/BSE Sem 1/datascience/", model_name, "_coefficients.txt")
   writeLines(latex_output, con = output_file)
-  dev.off()
+  
 }
-
 
 # [6] Results ----
 ### Get all the confusion matrices in a list for comparison
@@ -852,8 +685,7 @@ accuracy  <- accuracy %>% mutate(model = case_when(model == "knn" ~ "K-Nearest-N
                                                    model == 'logit' ~ "Logit")) %>% 
             mutate(model = fct_relevel(model, "Logit", "Lasso", "Elastic Net", "Ridge", "XGBoost", "Random Forest", "K-Nearest-Neighbors"))
 
-
-png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/accuracy_curves_plot.png", width = 1200, height = 800, res = 150)
+#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/accuracy_curves_plot.png", width = 1200, height = 800, res = 150)
 # plot this results in a geom_point plot with error bars
 ggplot(accuracy, aes(x = model, y = accuracy)) +
     geom_point(size = 3) +
@@ -866,9 +698,8 @@ ggplot(accuracy, aes(x = model, y = accuracy)) +
           axis.title.x = element_text(size = 12),
           axis.text.x = element_text(angle = 270, vjust = 0.5, hjust=1)) +
     scale_y_continuous(n.breaks = 20)
-dev.off()
 
-png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/roc_curves_plot.png", width = 1200, height = 800, res = 150)
+#png("/Users/rebeccahess/Documents/BSE Sem 1/datascience/roc_curves_plot.png", width = 1200, height = 800, res = 150)
 # Plot all the roc curves with the AUC in the legend with the plot function
 plot(y=roc_knn$sensitivities, x=1-roc_knn$specificities, col = "red", lwd = 2, type = "l", main = "ROC Curves", xlab = "False Positive Rate", ylab = "True Positive Rate")
 lines(y=roc_rf$sensitivities, x=1-roc_rf$specificities, col = "blue", lwd = 2)
@@ -890,4 +721,3 @@ legend("bottomright",
        col = c("red", "blue", "green", "purple", "orange", "black", "brown"), 
        lwd = 2)
 # End-of-File ----
-dev.off()
