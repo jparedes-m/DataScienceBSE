@@ -18,7 +18,6 @@ library(pROC)
 library(performanceEstimation)
 library(gridExtra)
 
-
 # [1] Data ----
 ## Reading, selecting variables, and making numerical some categorical variables.
 
