@@ -504,7 +504,7 @@ models <- list()
 results <- data.frame(alpha = numeric(), lambda = numeric(), auc = numeric())
 for (i in 0:50) {
     name <- paste0("alpha", i / 50)
-    model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = i / 50, lambda = NULL)
+    model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = i / 50, lambda = NULL, nfolds = 7)
     models[[name]] <- model
     probabilities <- predict(model, newx = test_matrix, s = "lambda.min", type = "response")
     auc <- suppressMessages(auc(test_label, probabilities))
@@ -513,7 +513,7 @@ for (i in 0:50) {
 results <- results %>% filter(alpha != 0 & alpha != 1) %>% arrange(desc(auc))
 alpha <- results[1, "alpha"]
 ### [5.4.1] Ridge Model ----
-ridge_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 0, lambda = NULL)
+ridge_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 0, lambda = NULL, nfolds = 7)
 ridge_probabilities <- predict(ridge_model, newx = test_matrix, s = "lambda.min", type = "response")
 ridge_predictions <- predict(ridge_model, newx = test_matrix, s = "lambda.min", type = "class")
 ridge_predictions <- factor(ridge_predictions, levels = c(0, 1))
@@ -526,7 +526,7 @@ ridge_coefs_1se <- coef(ridge_model, s = "lambda.1se") %>% as.matrix() %>% as.da
 ridge_coefs_min <- coef(ridge_model, s = "lambda.min") %>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_min = s1)
 ridge_coefs <- left_join(ridge_coefs_1se, ridge_coefs_min, by = "variable") %>% filter(lambda_min != 0 | lambda_1se != 0)
 ### [5.4.2] Elastic net ----
-elastic_net_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = alpha, lambda = NULL)
+elastic_net_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = alpha, lambda = NULL, nfolds = 7)
 elastic_net_probabilities <- predict(elastic_net_model, newx = test_matrix, s = "lambda.min", type = "response")
 elastic_net_predictions <- predict(elastic_net_model, newx = test_matrix, s = "lambda.min", type = "class")
 elastic_net_predictions <- factor(elastic_net_predictions, levels = c(0, 1))
@@ -540,7 +540,7 @@ elastic_coefs_min <- coef(elastic_net_model, s = "lambda.min")%>% as.matrix() %>
 elastic_coefs <- left_join(elastic_coefs_1se, elastic_coefs_min, by = "variable") %>% filter(lambda_min != 0 | lambda_1se != 0)
 
 ### [5.4.3] Lasso ----
-lasso_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 1, lambda = NULL)
+lasso_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 1, lambda = NULL, nfolds = 7)
 lasso_probabilities <- predict(lasso_model, newx = test_matrix, s = "lambda.min", type = "response")
 lasso_predictions <- predict(lasso_model, newx = test_matrix, s = "lambda.min", type = "class")
 lasso_predictions <- factor(lasso_predictions, levels = c(0, 1))
@@ -553,13 +553,13 @@ lasso_coefs_min <- coef(lasso_model, s = "lambda.min")%>% as.matrix() %>% as.dat
 lasso_coefs_1se <- coef(lasso_model, s = "lambda.1se")%>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_1se = s1)
 lasso_coefs <- left_join(lasso_coefs_1se, lasso_coefs_min, by = "variable") %>% filter(lambda_min != 0 | lambda_1se != 0)
 ### [5.4.4] Logit without penalization ----
-logit_model <- glm(class ~ ., data = train_data_balanced, family = "binomial")
-logit_probabilities <- predict(logit_model, newdata = test_x, type = "response")
-logit_predictions <- ifelse(logit_probabilities > 0.5, 1, 0)
-logit_predictions <- factor(logit_predictions, levels = c(0, 1))
-test_label <- factor(test_label, levels = c(0, 1))
+control <- trainControl(method = "cv", number = 7, classProbs = TRUE, summaryFunction = twoClassSummary)
+logit_model <- train(class ~ ., data = train_data_balanced, family=binomial(logit), method = 'glm',trControl = control)
+logit_probabilities <- predict(logit_model, newdata = test_x, type = "prob")
+logit_predictions <- predict(logit_model, newdata = test_x, type = 'raw')
+test_label <- factor(test_label, label = c('good', 'bad'), levels = c(0, 1))
 conf_matrix_logit <- confusionMatrix(logit_predictions, test_label)
-roc_logit <- roc(test_label, logit_probabilities)
+roc_logit <- roc(as.numeric(test_label)-1, logit_probabilities[,'bad'])
 
 # [6] Results ----
 ## [6.1] Accuracy ----
