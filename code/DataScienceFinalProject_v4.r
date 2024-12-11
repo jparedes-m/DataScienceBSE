@@ -339,7 +339,7 @@ importance_rf <- importance(rf_model) %>% as.data.frame() %>%
   mutate(Normalized = MeanDecreaseGini / max(MeanDecreaseGini, na.rm = TRUE)) %>%
   arrange(desc(Normalized)) %>%
   select(Normalized) %>% 
-  rownames_to_column(importance_df, "Variable")
+  rownames_to_column(var = "Variable")
 
 ggplot(importance_rf, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
