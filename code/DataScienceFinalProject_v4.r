@@ -341,7 +341,6 @@ importance_rf <- importance(rf_model) %>% as.data.frame() %>%
   select(Normalized) %>% 
   rownames_to_column(importance_df, "Variable")
 
-# Step 4: Plot the variable importance
 ggplot(importance_rf, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
   coord_flip() +
