@@ -5,7 +5,6 @@
 # Date: November - 2024
 
 # [0] Preamble ----
-set.seed(1)
 options(repr.plot.width=15, repr.plot.height=12)
 
 # Package installation and later call
@@ -39,7 +38,7 @@ suppressMessages(library(fastDummies))
 suppressMessages(library(janitor))
 # [1] Data ----
 ## Reading, selecting variables, and making numerical some categorical variables.
-
+set.seed(1)
 data <- read.csv('https://raw.githubusercontent.com/jparedes-m/DataScienceBSE/refs/heads/main/data/credit.csv') %>%
     select(age, personal_status, job, housing, savings_status, checking_status, credit_amount, duration, purpose, credit_history, property_magnitude, housing, existing_credits, num_dependents, foreign_worker, installment_commitment, residence_since, class) %>%
     separate(personal_status, into = c("sex", "p_status"), sep = " ") %>%
@@ -63,33 +62,25 @@ data <- read.csv('https://raw.githubusercontent.com/jparedes-m/DataScienceBSE/re
   relocate(class)
 
 # [2] Missing values / Factors treatment ----
-
-df <- data
-
-## Missing data treatment
-sapply(df, \(x) 100*mean(is.na(x)))
+## Is there any missing data?
+sapply(data, \(x) 100*mean(is.na(x)))
 
 # [3] Exploratory data analysis ----
 ## [3.1] Summary statistics ----
 # Ensure 'class' is a factor
 data$class <- as.factor(data$class)
 
-# Updated list of categorical variables
 cat_vars <- c("sex", "p_status", "job", "housing", "savings_account",
               "checking_account", "purpose", "credit_history",
               "property_magnitude", "foreign_worker")
 
-# Melt the dataset for easier plotting
 melted_data <- data %>%
   select(class, all_of(cat_vars)) %>%
   pivot_longer(cols = all_of(cat_vars), names_to = "Variable", values_to = "Category") %>%
   group_by(Variable, Category, class) %>%
   summarise(Frequency = n(), .groups = "drop")
 
-# Create a list to store the plots
 plot_list <- list()
-
-# Generate a barplot for each variable
 for (var in unique(melted_data$Variable)) {
   plot_data <- melted_data %>% filter(Variable == var)
 
@@ -121,12 +112,10 @@ plots_per_page <- 4
 pages <- ceiling(num_plots / plots_per_page)
 
 for (page in 1:pages) {
-  # Select plots for the current page
   start_idx <- (page - 1) * plots_per_page + 1
   end_idx <- min(page * plots_per_page, num_plots)
   current_plots <- plot_list[start_idx:end_idx]
 
-  # Arrange the selected plots in a grid and suppress output
   capture.output({
     grid.arrange(grobs = current_plots, ncol = 2, top = paste("Page", page))
   })
@@ -151,34 +140,35 @@ box()
 
 # Add a grid for better visualization
 grid()
+
+rm(class_proportions, num_plots, pages, plot_list, plots_per_page, start_idx, end_idx, current_plots, melted_data, plot_data, p, page, var)
+
 # [4] Preprocessing ----
-categorical_vars <- c("sex", "p_status", "housing", "job", "savings_account", "checking_account", "purpose", "credit_history", "property_magnitude", "foreign_worker")
-
+data <- data %>% mutate(class = as.numeric(class)-1)
 # Create dummy columns
-df <- dummy_cols(
-  df,
-  select_columns = categorical_vars,
-  remove_first_dummy = FALSE,          # Keeps all dummy variables
-  remove_most_frequent_dummy = FALSE, # Retain all dummy levels
-  ignore_na = FALSE,                  # Includes NAs if present
-  remove_selected_columns = TRUE,    # Keeps original columns
-  omit_colname_prefix = FALSE         # Keeps the column name as prefix
-)
+df_cat <- dummy_cols(
+  data,
+  select_columns = cat_vars,
+  remove_first_dummy = FALSE, remove_most_frequent_dummy = TRUE,  ignore_na = FALSE,
+  remove_selected_columns = TRUE,
+  omit_colname_prefix = FALSE) %>% 
+  # clean column names
+  janitor::clean_names() %>% 
+  mutate_if(is.integer, as.numeric)
 
-# Clean column names
-df <- df %>%
-  janitor::clean_names()
+sapply(df_cat, \(x) class(x))
 
-map <- pheatmap(cor(df, use = "complete.obs"), 
-                display_numbers = TRUE, 
+map <- pheatmap(cor(df_cat, use = "complete.obs"),
+                display_numbers = TRUE,
                 number_color = "black",
                 main = "Feature Correlation Heatmap", treeheight_row = F, treeheight_col = F)
 
 # Specify the variable of interest
 target_variable <- "class"
+
 # Calculate correlation with the rest of the variables
-correlations <- sapply(df, function(x) cor(df[[target_variable]], x, use = "complete.obs"))
-sorted_correlations <- sort(correlations, decreasing = TRUE)
+correlations <- sapply(df_cat, function(x) cor(df_cat[[target_variable]], x, use = "complete.obs"))
+correlations <- sort(correlations, decreasing = TRUE)
 
 # Analysis of the variables that likely need transformation of some kind
 numerical_vars <- c("age", "credit_amount", "repayment_burden", "duration", "installment_commitment", "num_dependents", "existing_credits", "residence_since")
@@ -188,10 +178,10 @@ data_normalized <- data %>%
   mutate(across(all_of(numerical_vars), ~ (. - min(.)) / (max(.) - min(.))))
 
 # Reshape data to long format
-data_long <- data_normalized %>%
+data_normalized <- data_normalized %>%
   pivot_longer(cols = all_of(numerical_vars), names_to = "Variable", values_to = "Value")
 
-ggplot(data_long, aes(x = Variable, y = Value, fill = as.factor(class))) +
+ggplot(data_normalized, aes(x = Variable, y = Value, fill = as.factor(class))) +
   geom_boxplot(position = position_dodge(width = 0.8)) +
   labs(
     title = "Normalized Boxplots Numerical Variables by Class",
@@ -245,7 +235,10 @@ for (page in 1:pages) {
   }))
 }
 
+rm(data_normalized, map, numerical_vars, correlations, end_idx, page, pages, plots_per_page, smooth_plots, start_idx, total_plots, trans, trans_name, transformations, var, variables)
+
 # Feature Engineering
+df <- data
 df <- df[df$repayment_burden < 1000,] # Remove outliers in repayment_burden
 df <- df %>% mutate(age = log(1 + age)) # Log-transform age
 df <- df %>% mutate(duration = log(1 + duration)) # Log-transform duration
@@ -258,6 +251,7 @@ df <- df %>% mutate(
 # Standardize numeric variables
 num_vars <- c('credit_amount', 'installment_commitment', 'residence_since', 'existing_credits', 'num_dependents', 'credit_amount2', 'num_dependents2', 'repayment_burden', 'repayment_burden2')
 df <- df %>% mutate(across(all_of(num_vars), scale))
+
 # [5] Models ----
 ## [5.0] Train-test split ----
 train_index <- sample(1:nrow(df), 0.75 * nrow(df))
@@ -297,60 +291,58 @@ roc_knn <- roc(test_y, knn_probabilities[, "bad"])
 
 ## [5.2] Random Forest ----
 ntree_grid  <- 100*c(1:5)
-mtry_grid <- c(2, 3, floor(sqrt(ncol(train_data_balanced) -1)), 5)
-rf_results <- list()
-control <- trainControl(method = "cv", number = 7, classProbs = TRUE, summaryFunction = twoClassSummary)
+mtry_grid <- 1:(ncol(train_data_balanced) - 1)
+results <- expand.grid(ntree = ntree_grid, mtry = mtry_grid)
+results$oob_accuracy <- NA
+results$test_accuracy <- NA
 
-for(ntree in ntree_grid){
-    rf_grid <- expand.grid(mtry = mtry_grid)
-    rf_tuned <- train(
-        class ~ ., 
-        data = train_data_balanced, 
-        method = "rf",
-        trControl = control,
-        tuneGrid = rf_grid, 
-        metric = 'ROC',
-        verbosity = 0,
-        ntree = ntree 
+for (i in 1:nrow(results)) {
+    ntree <- results$ntree[i]
+    mtry <- results$mtry[i]
+    
+    rf <- randomForest(
+        x = train_x, 
+        y = train_y, 
+        mtry = mtry, 
+        ntree = ntree
     )
     
-    rf_results[[as.character(ntree)]] <- list(
-        ntree = ntree,
-        model = rf_tuned,
-        best_mtry = rf_tuned$bestTune$mtry,
-        accuracy = suppressWarnings(max(rf_tuned$results$Accuracy, na.rm =T)),
-        results = rf_tuned$results
-    )
+    # Predictions on validation set
+    y_pred_val <- predict(rf, test_x)
+    
+    # Store OOB and test accuracy
+    results$oob_acc[i] <- 1 - mean(rf$err.rate[, "OOB"])
+    results$test_acc[i] <- mean(test_y == y_pred_val)
 }
 
-# Find the best ntree and mtry combination based on accuracy
-best_ntree <- names(which.max(sapply(rf_results, function(x) x$accuracy)))
-best_result <- rf_results[[best_ntree]]
+# Find the best combination based on test accuracy
+best_index <- which.max(results$test_acc)
+best_ntree <- results$ntree[best_index]
+best_mtry <- results$mtry[best_index]
+cat("Best ntree:", best_ntree, ", Best mtry:", best_mtry, "\n")
 
-rf_model <- randomForest(class ~ .,  data = train_data_balanced, ntree = best_result$ntree, mtry = best_result$best_mtry)
+rf_model <- randomForest(
+  class ~ ., 
+  data = train_data_balanced, 
+  mtry = best_mtry,  
+  ntree = best_ntree,     
+  importance = TRUE
+)
+
 rf_predictions <- predict(rf_model, newdata = test_x)
 conf_matrix_rf <- confusionMatrix(rf_predictions, test_y)
 rf_probabilities <- predict(rf_model, newdata = test_x, type = "prob")
 roc_rf <- roc(test_y, rf_probabilities[, "bad"])
 
 ### [5.2.1] Variable importance ----
-importance_table <- importance(rf_model)
-importance_df <- as.data.frame(importance_table)
-
-Normalized <- importance_df %>%
+importance_rf <- importance(rf_model) %>% as.data.frame() %>%
   mutate(Normalized = MeanDecreaseGini / max(MeanDecreaseGini, na.rm = TRUE)) %>%
   arrange(desc(Normalized)) %>%
-  select(Normalized)
-# Keep only the desired columns
-
-# Add variable names as a column
-Normalized <- tibble::rownames_to_column(Normalized, "Variable")
-
-# Generate LaTeX table using stargazer
-#stargazer(as.matrix(Normalized), type = "latex", summary = FALSE, title = "Random Forest Variable Importance", align = TRUE)
+  select(Normalized) %>% 
+  rownames_to_column(importance_df, "Variable")
 
 # Step 4: Plot the variable importance
-ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
+ggplot(importance_rf, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
   coord_flip() +
   labs(
@@ -378,24 +370,19 @@ xgb_probabilities <- predict(xgb_model, newdata = test_matrix, type = "prob")
 
 roc_xgb <- roc(test_label, xgb_probabilities[, "bad"])
 ### [5.3.1] Variable importance ----
-importance <- varImp(xgb_model)
-importance_df <- as.data.frame(importance$importance)
-importance_df$Feature <- rownames(importance_df)
-importance_df <- importance_df %>%
+importance_xgb <- varImp(xgb_model)$importance %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "Feature") %>%
   mutate(NormalizedImportance = Overall / max(Overall)) %>%
   arrange(desc(NormalizedImportance)) %>%
-  select(Feature, NormalizedImportance)
+  select(Feature, NormalizedImportance) %>% 
+  filter(NormalizedImportance > 0)
 
-#stargazer(as.matrix(Normalized), type = "latex", summary = FALSE, title = "XGBoost Variable Importance", align = TRUE)
-
-ggplot(Normalized, aes(x = reorder(Variable, -Normalized), y = Normalized)) +
+ggplot(importance_xgb, aes(x = reorder(Feature, -NormalizedImportance), y = NormalizedImportance)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
   coord_flip() +
-  labs(
-    title = "XGBoost Variable Importance",
-    x = "Variable",
-    y = "Normalized Importance"
-  ) +
+  labs(title = "XGBoost Variable Importance",
+       x = "Variable", y = "Normalized Importance") +
   theme_minimal()
 
 ## [5.4] Elastic net with logit ----
@@ -405,18 +392,14 @@ train_label <- as.numeric(train_y)-1
 test_label <- as.numeric(test_y)-1
 
 ### [5.4.0] Cross-validation to find the best alpha ----
-models <- list()
-results <- data.frame(alpha = numeric(), lambda = numeric(), auc = numeric())
-for (i in 0:50) {
-    name <- paste0("alpha", i / 50)
-    model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = i / 50, lambda = NULL, nfolds = 7)
-    models[[name]] <- model
+results <- lapply(seq(0, 1, length.out = 51)[-c(1, 51)], function(alpha) {  # Exclude alpha = 0 and alpha = 1
+    model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = alpha, nfolds = 7)
     probabilities <- predict(model, newx = test_matrix, s = "lambda.min", type = "response")
-    auc <- suppressMessages(suppressWarnings(roc(test_label, as.vector(probabilities))$auc))
-    results <- rbind(results, data.frame(alpha = i / 50, lambda = model$lambda.min, auc = auc))
-}
-results <- results %>% filter(alpha != 0 & alpha != 1) %>% arrange(desc(auc))
-alpha <- results[1, "alpha"]
+    auc <- suppressMessages(roc(test_label, as.vector(probabilities))$auc)
+    list(alpha = alpha, model = model, lambda = model$lambda.min, auc = auc)
+})
+results_df <- do.call(rbind, lapply(results, function(x) data.frame(alpha = x$alpha, lambda = x$lambda, auc = x$auc)))
+best_alpha <- results_df[which.max(results_df$auc), "alpha"]
 ### [5.4.1] Ridge Model ----
 ridge_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = 0, lambda = NULL, nfolds = 7)
 ridge_probabilities <- predict(ridge_model, newx = test_matrix, s = "lambda.min", type = "response")
