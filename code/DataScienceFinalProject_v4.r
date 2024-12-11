@@ -413,7 +413,7 @@ ridge_coefs_1se <- coef(ridge_model, s = "lambda.1se") %>% as.matrix() %>% as.da
 ridge_coefs_min <- coef(ridge_model, s = "lambda.min") %>% as.matrix() %>% as.data.frame() %>% rownames_to_column("variable") %>% rename(lambda_min = s1)
 ridge_coefs <- left_join(ridge_coefs_1se, ridge_coefs_min, by = "variable") %>% filter(lambda_min != 0 | lambda_1se != 0)
 ### [5.4.2] Elastic net ----
-elastic_net_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = alpha, lambda = NULL, nfolds = 7)
+elastic_net_model <- cv.glmnet(x = train_matrix, y = train_label, family = "binomial", alpha = best_alpha, lambda = NULL, nfolds = 7)
 elastic_net_probabilities <- predict(elastic_net_model, newx = test_matrix, s = "lambda.min", type = "response")
 elastic_net_predictions <- predict(elastic_net_model, newx = test_matrix, s = "lambda.min", type = "class")
 elastic_net_predictions <- factor(elastic_net_predictions, levels = c(0, 1))
